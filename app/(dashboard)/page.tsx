@@ -1,0 +1,8 @@
+import { redirect } from "next/navigation"
+
+import { requireUser } from "@/lib/auth"
+
+export default async function HomePage() {
+  const user = await requireUser()
+  redirect(user.profile.role === "admin" ? "/admin/agents" : "/missions")
+}
