@@ -45,3 +45,10 @@ export async function requireAdmin() {
   if (user.profile.role !== "admin") redirect("/missions")
   return user
 }
+
+// For server actions and route handlers: they return errors instead of
+// redirecting, and must never rely on the page that rendered the form.
+export async function getAdmin() {
+  const user = await getCurrentUser()
+  return user?.profile.role === "admin" ? user : null
+}
