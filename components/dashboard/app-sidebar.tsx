@@ -6,6 +6,7 @@ import { useTransition } from "react"
 import { ChevronsUpDown, LogOut } from "lucide-react"
 
 import { logout } from "@/app/actions/auth"
+import { agentIconFor } from "@/components/agents/agent-icon"
 import {
   adminNav,
   mainNav,
@@ -44,6 +45,7 @@ type AppSidebarProps = {
   displayName: string
   email: string
   avatarUrl: string | null
+  squad: { id: string; name: string }[]
 }
 
 function initials(name: string) {
@@ -104,6 +106,7 @@ export function AppSidebar({
   displayName,
   email,
   avatarUrl,
+  squad,
 }: AppSidebarProps) {
   const pathname = usePathname()
   const [signingOut, startSignOut] = useTransition()
@@ -130,6 +133,26 @@ export function AppSidebar({
 
       <SidebarContent>
         <NavGroup label="Workspace" items={mainNav} pathname={pathname} />
+        {squad.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel>My Squad</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {squad.map((agent) => (
+                  <SidebarMenuItem key={agent.id}>
+                    <SidebarMenuButton
+                      tooltip={agent.name}
+                      render={<Link href="/missions" />}
+                    >
+                      <NavIcon item={agentIconFor(agent.name)} />
+                      <span>{agent.name}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
         {role === "admin" && (
           <NavGroup label="Admin" items={adminNav} pathname={pathname} />
         )}
@@ -155,7 +178,11 @@ export function AppSidebar({
                 </div>
                 <ChevronsUpDown className="ml-auto size-4" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent side="top" align="start" className="min-w-56">
+              <DropdownMenuContent
+                side="top"
+                align="start"
+                className="min-w-56"
+              >
                 <DropdownMenuGroup>
                   <DropdownMenuLabel className="font-normal">
                     <div className="grid text-sm leading-tight">
