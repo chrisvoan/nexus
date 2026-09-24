@@ -41,6 +41,9 @@ type AgentFormProps = {
   defaultModel: string
   hasCompanyContext: boolean
   readOnly?: boolean
+  // Rendered under Details on the edit page. A new agent has no id yet, so
+  // there is nothing to pin files to until it is saved.
+  knowledge?: React.ReactNode
 }
 
 export function AgentForm({
@@ -49,6 +52,7 @@ export function AgentForm({
   defaultModel,
   hasCompanyContext,
   readOnly = false,
+  knowledge,
 }: AgentFormProps) {
   const action = agent ? updateAgent.bind(null, agent.id) : createAgent
   const [state, formAction, pending] = useActionState<AgentFormState, FormData>(
@@ -78,7 +82,8 @@ export function AgentForm({
         action={formAction}
         className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]"
       >
-        <Card className="h-fit">
+        <div className="flex h-fit flex-col gap-6">
+        <Card>
           <CardHeader>
             <CardTitle>Details</CardTitle>
             <CardDescription>
@@ -137,6 +142,8 @@ export function AgentForm({
             </div>
           </CardContent>
         </Card>
+        {knowledge}
+        </div>
 
         <Card>
           <CardHeader>

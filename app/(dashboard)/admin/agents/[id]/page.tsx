@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 
 import { AgentActions } from "@/components/agents/agent-actions"
 import { AgentForm } from "@/components/agents/agent-form"
+import { AgentKnowledgeEditor } from "@/components/agents/agent-knowledge-editor"
 import { AgentSyncBadge } from "@/components/agents/agent-sync-badge"
 import { PageHeader } from "@/components/dashboard/page-header"
 import {
@@ -12,6 +13,7 @@ import {
 } from "@/lib/anthropic/models"
 import { requireAdmin } from "@/lib/auth"
 import { hasCompanyProfile } from "@/lib/company-context"
+import { getDriveConnection } from "@/lib/drive/connection"
 import { createClient } from "@/lib/supabase/server"
 import { isUuid } from "@/lib/utils"
 
@@ -27,14 +29,16 @@ export default async function EditAgentPage({
 
   await requireAdmin()
   const supabase = await createClient()
-  const [{ data: agent }, models, { data: company }] = await Promise.all([
-    supabase.from("agents").select("*").eq("id", id).maybeSingle(),
-    listModels(),
-    supabase
-      .from("company_settings")
-      .select("company_overview, brand_voice, reusable_instructions")
-      .maybeSingle(),
-  ])
+  const [{ data: agent }, models, { data: company }, driveConnection] =
+    await Promise.all([
+      supabase.from("agents").select("*").eq("id", id).maybeSingle(),
+      listModels(),
+      supabase
+        .from("company_settings")
+        .select("company_overview, brand_voice, reusable_instructions")
+        .maybeSingle(),
+      getDriveConnection(),
+    ])
   if (!agent) notFound()
 
   const archived = Boolean(agent.archived_at)
@@ -74,6 +78,13 @@ export default async function EditAgentPage({
           defaultModel={DEFAULT_AGENT_MODEL}
           hasCompanyContext={hasCompanyProfile(company)}
           readOnly={archived}
+          knowledge={
+            <AgentKnowledgeEditor
+              agentId={agent.id}
+              driveConnected={Boolean(driveConnection)}
+              readOnly={archived}
+            />
+          }
         />
       </div>
     </>
