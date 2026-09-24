@@ -5,14 +5,31 @@ import Anthropic from "@anthropic-ai/sdk"
 import { getAnthropicClient } from "@/lib/anthropic/client"
 import type { Agent } from "@/lib/types/database"
 
-// Sessions (Phase 4) need the toolset to read mounted knowledge files, run
+// Mission sessions need the toolset to read mounted knowledge files, run
 // bash, and search the web. Always send it so every agent version carries it.
-const AGENT_TOOLS = [
-  {
-    type: "agent_toolset_20260401" as const,
-    default_config: { enabled: true },
-  },
-]
+const AGENT_TOOLS = agentTools({ web: true })
+
+/**
+ * The toolset every Nexus agent runs with. Missions that turn web search off
+ * pass `web: false` as a session-only override, which removes web search and
+ * web fetch for that run without touching the saved agent.
+ */
+export function agentTools({ web }: { web: boolean }) {
+  return [
+    {
+      type: "agent_toolset_20260401" as const,
+      default_config: { enabled: true },
+      ...(web
+        ? {}
+        : {
+            configs: [
+              { name: "web_search" as const, enabled: false },
+              { name: "web_fetch" as const, enabled: false },
+            ],
+          }),
+    },
+  ]
+}
 
 type SyncableAgent = Pick<
   Agent,

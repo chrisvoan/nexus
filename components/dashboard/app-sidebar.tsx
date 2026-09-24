@@ -142,7 +142,8 @@ export function AppSidebar({
                   <SidebarMenuItem key={agent.id}>
                     <SidebarMenuButton
                       tooltip={agent.name}
-                      render={<Link href="/missions" />}
+                      isActive={isActivePath(pathname, `/squad/${agent.id}`)}
+                      render={<Link href={`/squad/${agent.id}`} />}
                     >
                       <NavIcon item={agentIconFor(agent.name)} />
                       <span>{agent.name}</span>

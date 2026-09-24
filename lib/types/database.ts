@@ -3,6 +3,8 @@
 
 export type UserRole = "admin" | "user"
 export type AgentSyncStatus = "pending" | "synced" | "error"
+export type MissionStatus = "queued" | "in_progress" | "completed" | "failed"
+export type MissionOutputType = "doc" | "sheet" | "pdf"
 
 export type Database = {
   public: {
@@ -41,6 +43,7 @@ export type Database = {
           pipedream_external_user_id: string | null
           pipedream_connected_by: string | null
           pipedream_connected_at: string | null
+          anthropic_environment_id: string | null
           updated_by: string | null
           updated_at: string
         }
@@ -54,6 +57,7 @@ export type Database = {
           pipedream_external_user_id?: string | null
           pipedream_connected_by?: string | null
           pipedream_connected_at?: string | null
+          anthropic_environment_id?: string | null
           updated_by?: string | null
         }
         Update: {
@@ -65,6 +69,7 @@ export type Database = {
           pipedream_external_user_id?: string | null
           pipedream_connected_by?: string | null
           pipedream_connected_at?: string | null
+          anthropic_environment_id?: string | null
           updated_by?: string | null
         }
         Relationships: []
@@ -180,12 +185,108 @@ export type Database = {
           },
         ]
       }
+      user_drive_connections: {
+        Row: {
+          user_id: string
+          pipedream_account_id: string
+          account_name: string | null
+          connected_at: string
+        }
+        Insert: {
+          user_id: string
+          pipedream_account_id: string
+          account_name?: string | null
+          connected_at?: string
+        }
+        Update: {
+          pipedream_account_id?: string
+          account_name?: string | null
+          connected_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_drive_connections_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      missions: {
+        Row: {
+          id: string
+          user_id: string
+          agent_id: string
+          title: string
+          brief: string
+          web_search: boolean
+          output_type: MissionOutputType
+          status: MissionStatus
+          session_id: string | null
+          output_url: string | null
+          output_file_id: string | null
+          output_text: string | null
+          output_error: string | null
+          error: string | null
+          started_at: string | null
+          completed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          agent_id: string
+          title: string
+          brief: string
+          web_search?: boolean
+          output_type?: MissionOutputType
+          status?: MissionStatus
+        }
+        Update: {
+          agent_id?: string
+          title?: string
+          brief?: string
+          web_search?: boolean
+          output_type?: MissionOutputType
+          status?: MissionStatus
+          session_id?: string | null
+          output_url?: string | null
+          output_file_id?: string | null
+          output_text?: string | null
+          output_error?: string | null
+          error?: string | null
+          started_at?: string | null
+          completed_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "missions_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "missions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: { [_ in never]: never }
     Functions: {
       get_my_role: { Args: Record<string, never>; Returns: UserRole }
     }
-    Enums: { user_role: UserRole }
+    Enums: {
+      user_role: UserRole
+      mission_status: MissionStatus
+      mission_output_type: MissionOutputType
+    }
     CompositeTypes: { [_ in never]: never }
   }
 }
@@ -197,3 +298,5 @@ export type CompanySettings = Tables["company_settings"]["Row"]
 export type Agent = Tables["agents"]["Row"]
 export type AgentKnowledge = Tables["agent_knowledge"]["Row"]
 export type UserAgent = Tables["user_agents"]["Row"]
+export type UserDriveConnection = Tables["user_drive_connections"]["Row"]
+export type Mission = Tables["missions"]["Row"]

@@ -1,103 +1,53 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { headers } from "next/headers"
 
+import { describeAnthropicError } from "@/lib/anthropic/agents"
+import { createMissionEnvironment } from "@/lib/anthropic/environment"
 import { getAdmin } from "@/lib/auth"
 import { ORG_EXTERNAL_USER_ID } from "@/lib/drive/connection"
-import { GOOGLE_DRIVE_APP_SLUG } from "@/lib/drive/types"
+import { isMissingSchema } from "@/lib/missions/queries"
 import {
   describePipedreamError,
   getPipedreamClient,
   isPipedreamConfigured,
+  PIPEDREAM_NOT_CONFIGURED,
 } from "@/lib/pipedream/client"
+import {
+  createConnectToken,
+  findNewestDriveAccount,
+  type ConnectToken,
+} from "@/lib/pipedream/connect"
 import { createClient } from "@/lib/supabase/server"
 
 type ActionResult<T = unknown> = ({ ok: true } & T) | { error: string }
 
-// There should only ever be one, but the listing is paginated; stop early
-// rather than walking a long history.
-const MAX_ACCOUNTS_SCANNED = 20
-
-/**
- * A short-lived Connect token the browser SDK uses to open the Google OAuth
- * dialog. Client credentials stay on the server; the token only ever
- * authorises this one external user.
- */
 export async function createDriveConnectToken(): Promise<
-  ActionResult<{ token: string; expiresAt: string; externalUserId: string }>
+  ActionResult<ConnectToken>
 > {
   if (!(await getAdmin()))
     return { error: "Only admins can connect Google Drive." }
-  if (!isPipedreamConfigured())
-    return {
-      error:
-        "Pipedream is not configured. Set PIPEDREAM_PROJECT_ID, PIPEDREAM_CLIENT_ID, and PIPEDREAM_CLIENT_SECRET, then restart the dev server.",
-    }
+  if (!isPipedreamConfigured()) return { error: PIPEDREAM_NOT_CONFIGURED }
 
   try {
-    const origin = await requestOrigin()
-    const response = await getPipedreamClient().tokens.create({
-      externalUserId: ORG_EXTERNAL_USER_ID,
-      ...(origin ? { allowedOrigins: [origin] } : {}),
-    })
-    return {
-      ok: true,
-      token: response.token,
-      expiresAt: new Date(response.expiresAt).toISOString(),
-      externalUserId: ORG_EXTERNAL_USER_ID,
-    }
+    return { ok: true, ...(await createConnectToken(ORG_EXTERNAL_USER_ID)) }
   } catch (error) {
     console.error("Pipedream connect token failed", error)
     return { error: describePipedreamError(error) }
   }
 }
 
-// Locks the token to the origin the admin is actually on, which beats
-// NEXT_PUBLIC_APP_URL: dev servers move ports, and preview deploys get their
-// own hostname. Next.js already validates this header against the host.
-async function requestOrigin() {
-  const requestHeaders = await headers()
-  const origin = requestHeaders.get("origin")
-  if (origin) return origin
-
-  const host = requestHeaders.get("host")
-  if (!host) return null
-  const proto = requestHeaders.get("x-forwarded-proto") ?? "http"
-  return `${proto}://${host}`
-}
-
-/**
- * Records the connection after the OAuth dialog closes. The account id from
- * the browser is not trusted: it is re-read from Pipedream so a tampered
- * client cannot point the company at someone else's Drive.
- */
+/** Records the connection after the OAuth dialog closes. */
 export async function completeDriveConnection(): Promise<ActionResult> {
   const admin = await getAdmin()
   if (!admin) return { error: "Only admins can connect Google Drive." }
 
   let accountId: string
   try {
-    // Pipedream does not hand back an account id when the dialog closes, so
-    // the newest live Google Drive account for this external user wins.
-    const page = await getPipedreamClient().accounts.list({
-      externalUserId: ORG_EXTERNAL_USER_ID,
-      app: GOOGLE_DRIVE_APP_SLUG,
-    })
-    const accounts = []
-    for await (const account of page) {
-      if (!account.dead) accounts.push(account)
-      if (accounts.length >= MAX_ACCOUNTS_SCANNED) break
-    }
-
-    const newest = accounts.sort(
-      (a, b) =>
-        new Date(b.createdAt ?? 0).getTime() -
-        new Date(a.createdAt ?? 0).getTime()
-    )[0]
-    if (!newest)
+    const account = await findNewestDriveAccount(ORG_EXTERNAL_USER_ID)
+    if (!account)
       return { error: "Pipedream has no connected Google Drive account yet." }
-    accountId = newest.id
+    accountId = account.id
   } catch (error) {
     console.error("Pipedream account lookup failed", error)
     return { error: describePipedreamError(error) }
@@ -163,4 +113,58 @@ function revalidateIntegrations() {
   revalidatePath("/admin/integrations")
   // The agent editor's knowledge picker shows a disconnected state.
   revalidatePath("/admin/agents", "layout")
+}
+
+/**
+ * Creates the shared Managed Agents environment that mission sessions run
+ * in. Replaces any existing one: the old environment is left in the Console
+ * (sessions that ran in it still reference it) and simply stops being used.
+ */
+export async function createAgentEnvironment(): Promise<ActionResult> {
+  const admin = await getAdmin()
+  if (!admin) return { error: "Only admins can set up the agent runtime." }
+
+  // Check the column exists before creating anything at Anthropic, so a
+  // missing migration can't leave an environment nobody has recorded.
+  const supabase = await createClient()
+  const { error: schemaError } = await supabase
+    .from("company_settings")
+    .select("anthropic_environment_id")
+    .maybeSingle()
+  if (schemaError)
+    return {
+      error: isMissingSchema(schemaError)
+        ? "Apply supabase/migrations/006_missions.sql in the Supabase SQL Editor first."
+        : schemaError.message,
+    }
+
+  let environmentId: string
+  try {
+    environmentId = await createMissionEnvironment()
+  } catch (error) {
+    console.error("Environment creation failed", error)
+    return { error: describeAnthropicError(error) }
+  }
+
+  // Update, not upsert: an upsert is checked against the insert policy even
+  // when the row exists, and that policy only arrives with migration 004.
+  const row = { anthropic_environment_id: environmentId, updated_by: admin.id }
+  const { data, error } = await supabase
+    .from("company_settings")
+    .update(row)
+    .eq("id", true)
+    .select("id")
+  if (error) return { error: error.message }
+
+  // The singleton row is seeded by migration 002; recreate it if it went
+  // missing (needs migration 004), as the Company page does.
+  if (!data?.length) {
+    const { error: insertError } = await supabase
+      .from("company_settings")
+      .insert({ id: true, ...row })
+    if (insertError) return { error: insertError.message }
+  }
+
+  revalidatePath("/admin/integrations")
+  return { ok: true }
 }

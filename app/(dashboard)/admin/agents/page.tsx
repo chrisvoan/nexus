@@ -2,31 +2,16 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { Plus } from "lucide-react"
 
-import { AgentIcon } from "@/components/agents/agent-icon"
-import { AgentSyncBadge } from "@/components/agents/agent-sync-badge"
-import { ModelPill } from "@/components/agents/model-pill"
+import { AgentCard, type AgentSummary } from "@/components/agents/agent-card"
 import { navItem } from "@/components/dashboard/nav"
 import { NavIcon } from "@/components/dashboard/nav-icon"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { buttonVariants } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
 import { requireAdmin } from "@/lib/auth"
 import { createClient } from "@/lib/supabase/server"
-import type { Agent } from "@/lib/types/database"
 import { cn } from "@/lib/utils"
 
 export const metadata: Metadata = { title: "Agents" }
-
-type AgentSummary = Pick<
-  Agent,
-  | "id"
-  | "name"
-  | "description"
-  | "model"
-  | "sync_status"
-  | "sync_error"
-  | "archived_at"
->
 
 export default async function AgentsPage() {
   await requireAdmin()
@@ -75,33 +60,9 @@ export default async function AgentsPage() {
 
 function AgentGrid({ agents }: { agents: AgentSummary[] }) {
   return (
-    <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
       {agents.map((agent) => (
-        <Link
-          key={agent.id}
-          href={`/admin/agents/${agent.id}`}
-          className={cn(
-            "relative flex h-full flex-col rounded-xl bg-card p-7 text-card-foreground ring-1 ring-foreground/10 transition-colors outline-none hover:bg-muted/40 focus-visible:ring-3 focus-visible:ring-ring/50",
-            agent.archived_at && "opacity-60"
-          )}
-        >
-          {/* Only agents needing attention get a badge; the design has none. */}
-          {(agent.sync_status !== "synced" || agent.archived_at) && (
-            <div className="absolute top-5 right-5">
-              <AgentSyncBadge agent={agent} />
-            </div>
-          )}
-          <AgentIcon name={agent.name} />
-          <h3 className="mt-7 truncate text-xl font-semibold">{agent.name}</h3>
-          <p className="mt-2 line-clamp-2 text-muted-foreground">
-            {agent.description || "No description."}
-          </p>
-          {/* Pinned to the bottom so cards in a row line up. */}
-          <div className="mt-auto pt-6">
-            <Separator />
-            <ModelPill model={agent.model} className="mt-5" />
-          </div>
-        </Link>
+        <AgentCard key={agent.id} agent={agent} />
       ))}
     </div>
   )

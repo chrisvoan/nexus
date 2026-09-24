@@ -12,6 +12,12 @@ export type AgentKnowledgeFile = Pick<
 /** Pipedream's app slug for Google Drive, used by both the connect dialog and account lookup. */
 export const GOOGLE_DRIVE_APP_SLUG = "google_drive"
 
+/**
+ * Which Drive a mission output is saved to: the employee's own, or the
+ * company's when they haven't connected one.
+ */
+export type DriveTarget = "personal" | "company"
+
 export const DRIVE_MIME = {
   googleDoc: "application/vnd.google-apps.document",
   googleSheet: "application/vnd.google-apps.spreadsheet",
