@@ -37,6 +37,10 @@ export type Database = {
           company_overview: string | null
           brand_voice: string | null
           reusable_instructions: string | null
+          pipedream_account_id: string | null
+          pipedream_external_user_id: string | null
+          pipedream_connected_by: string | null
+          pipedream_connected_at: string | null
           updated_by: string | null
           updated_at: string
         }
@@ -46,6 +50,10 @@ export type Database = {
           company_overview?: string | null
           brand_voice?: string | null
           reusable_instructions?: string | null
+          pipedream_account_id?: string | null
+          pipedream_external_user_id?: string | null
+          pipedream_connected_by?: string | null
+          pipedream_connected_at?: string | null
           updated_by?: string | null
         }
         Update: {
@@ -53,6 +61,10 @@ export type Database = {
           company_overview?: string | null
           brand_voice?: string | null
           reusable_instructions?: string | null
+          pipedream_account_id?: string | null
+          pipedream_external_user_id?: string | null
+          pipedream_connected_by?: string | null
+          pipedream_connected_at?: string | null
           updated_by?: string | null
         }
         Relationships: []
@@ -101,6 +113,38 @@ export type Database = {
           archived_at?: string | null
         }
         Relationships: []
+      }
+      agent_knowledge: {
+        Row: {
+          id: string
+          agent_id: string
+          file_id: string
+          file_name: string
+          file_mime_type: string
+          added_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          agent_id: string
+          file_id: string
+          file_name: string
+          file_mime_type: string
+          added_by?: string | null
+        }
+        Update: {
+          file_name?: string
+          file_mime_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_knowledge_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agents"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_agents: {
         Row: {
@@ -151,4 +195,5 @@ type Tables = Database["public"]["Tables"]
 export type Profile = Tables["profiles"]["Row"]
 export type CompanySettings = Tables["company_settings"]["Row"]
 export type Agent = Tables["agents"]["Row"]
+export type AgentKnowledge = Tables["agent_knowledge"]["Row"]
 export type UserAgent = Tables["user_agents"]["Row"]
