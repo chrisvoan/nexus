@@ -47,7 +47,7 @@ async function proxyGetJson(
   return proxyGet(connection, url, params)
 }
 
-async function proxyGetBuffer(
+export async function proxyGetBuffer(
   connection: DriveConnection,
   url: string,
   params: ProxyParams,

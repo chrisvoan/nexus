@@ -2,9 +2,13 @@
 
 import { useRouter } from "next/navigation"
 import { useState, useTransition } from "react"
-import { CheckCircle2, HardDrive, Link2, Unplug } from "lucide-react"
 import { toast } from "sonner"
 
+import {
+  completeMyDriveConnection,
+  createMyDriveConnectToken,
+  disconnectMyDrive,
+} from "@/app/actions/drive"
 import {
   completeDriveConnection,
   createDriveConnectToken,
@@ -21,38 +25,57 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Badge } from "@/components/ui/badge"
+import { GoogleDriveLogo } from "@/components/integrations/google-drive-logo"
+import { IntegrationCard } from "@/components/integrations/integration-card"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
 import { GOOGLE_DRIVE_APP_SLUG } from "@/lib/drive/types"
 
+// The company Drive feeds agent knowledge and is managed by admins; a
+// personal Drive is where one employee's mission outputs are saved. Same
+// OAuth flow, different actions and copy.
+const SCOPES = {
+  company: {
+    createToken: createDriveConnectToken,
+    complete: completeDriveConnection,
+    disconnect: disconnectDrive,
+    description: "Let agents read your Drive files",
+    disconnectDescription:
+      "Agents keep their pinned files listed, but nothing can be read from Drive until it is reconnected. Nothing in Drive is changed or deleted.",
+  },
+  personal: {
+    createToken: createMyDriveConnectToken,
+    complete: completeMyDriveConnection,
+    disconnect: disconnectMyDrive,
+    description: "Save your mission outputs to your Drive",
+    disconnectDescription:
+      "New mission outputs won't be saved to your Drive until you reconnect it. Files already in your Drive are not changed or deleted.",
+  },
+}
+
 type GoogleDriveCardProps = {
+  scope: keyof typeof SCOPES
   connected: boolean
   configured: boolean
   connectedAt: string | null
-  connectedByName: string | null
+  /** "Connected by Ada" or "Connected as ada@example.com". */
+  connectedLabel: string | null
 }
 
 export function GoogleDriveCard({
+  scope,
   connected,
   configured,
   connectedAt,
-  connectedByName,
+  connectedLabel,
 }: GoogleDriveCardProps) {
   const router = useRouter()
   const [connecting, setConnecting] = useState(false)
   const [disconnecting, startDisconnect] = useTransition()
+  const actions = SCOPES[scope]
 
   async function connect() {
     setConnecting(true)
-    const session = await createDriveConnectToken()
+    const session = await actions.createToken()
     if ("error" in session) {
       toast.error("Couldn't start Google sign-in", {
         description: session.error,
@@ -62,8 +85,8 @@ export function GoogleDriveCard({
     }
 
     try {
-      // Loaded on demand: the Connect SDK is only needed the one time an admin
-      // links Drive, and it should not sit in the dashboard bundle.
+      // Loaded on demand: the Connect SDK is only needed the one time Drive
+      // is linked, and it should not sit in the dashboard bundle.
       const { createFrontendClient } = await import("@pipedream/sdk/browser")
       const client = createFrontendClient({
         externalUserId: session.externalUserId,
@@ -81,7 +104,7 @@ export function GoogleDriveCard({
         onSuccess: async () => {
           // Pipedream does not report the new account id here, so the server
           // looks it up and verifies it before saving.
-          const result = await completeDriveConnection()
+          const result = await actions.complete()
           setConnecting(false)
           if ("error" in result) {
             toast.error("Couldn't save the connection", {
@@ -110,7 +133,7 @@ export function GoogleDriveCard({
 
   function disconnect() {
     startDisconnect(async () => {
-      const result = await disconnectDrive()
+      const result = await actions.disconnect()
       if ("error" in result) {
         toast.error("Couldn't disconnect", { description: result.error })
         return
@@ -121,79 +144,46 @@ export function GoogleDriveCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-start gap-4">
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-orange-500/15 text-orange-600 dark:text-orange-400">
-            <HardDrive className="size-5" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <CardTitle className="flex items-center gap-2">
-              Google Drive
-              {connected && (
-                <Badge variant="secondary">
-                  <CheckCircle2 />
-                  Connected
-                </Badge>
-              )}
-            </CardTitle>
-            <CardDescription>
-              Connected once for the whole company. Agents read pinned files
-              from here, and missions save their output back to it.
-            </CardDescription>
-          </div>
-        </div>
-      </CardHeader>
+    <IntegrationCard
+      icon={<GoogleDriveLogo className="size-7" />}
+      title="Google Drive"
+      description={actions.description}
+      status={
+        connected
+          ? { label: "Connected", tone: "connected" }
+          : { label: "Not connected", tone: "idle" }
+      }
+    >
+      {!configured && (
+        <p className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {scope === "company" ? (
+            <>
+              Pipedream isn&apos;t configured. Set{" "}
+              <code className="font-mono">PIPEDREAM_PROJECT_ID</code>,{" "}
+              <code className="font-mono">PIPEDREAM_CLIENT_ID</code>, and{" "}
+              <code className="font-mono">PIPEDREAM_CLIENT_SECRET</code> in
+              <code className="font-mono"> .env.local</code>, then restart the
+              server.
+            </>
+          ) : (
+            "Google sign-in isn't set up on this workspace yet. Ask an admin to configure Pipedream."
+          )}
+        </p>
+      )}
 
-      <CardContent className="text-sm text-muted-foreground">
-        {!configured ? (
-          <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-destructive">
-            Pipedream isn&apos;t configured. Set{" "}
-            <code className="font-mono">PIPEDREAM_PROJECT_ID</code>,{" "}
-            <code className="font-mono">PIPEDREAM_CLIENT_ID</code>, and{" "}
-            <code className="font-mono">PIPEDREAM_CLIENT_SECRET</code> in
-            <code className="font-mono"> .env.local</code>, then restart the
-            server.
-          </p>
-        ) : connected ? (
-          <p>
-            {connectedByName
-              ? `Connected by ${connectedByName}`
-              : "Connected"}
-            {connectedAt && ` on ${formatDate(connectedAt)}`}. Nexus stores only
-            the connection id — Google credentials stay in Pipedream, and file
-            contents are read fresh on every run.
-          </p>
-        ) : (
-          <p>
-            Not connected. Until an admin links Drive, agents have no knowledge
-            files and missions can only return plain text.
-          </p>
-        )}
-      </CardContent>
-
-      <CardFooter className="justify-end">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         {connected ? (
           <AlertDialog>
             <AlertDialogTrigger
-              render={
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={disconnecting}
-                />
-              }
+              render={<Button variant="outline" disabled={disconnecting} />}
             >
-              <Unplug />
               {disconnecting ? "Disconnecting…" : "Disconnect"}
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Disconnect Google Drive?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Agents keep their pinned files listed, but nothing can be read
-                  from Drive until it is reconnected. Nothing in Drive is
-                  changed or deleted.
+                  {actions.disconnectDescription}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -209,13 +199,19 @@ export function GoogleDriveCard({
             </AlertDialogContent>
           </AlertDialog>
         ) : (
-          <Button size="sm" onClick={connect} disabled={!configured || connecting}>
-            <Link2 />
-            {connecting ? "Waiting for Google…" : "Connect Google Drive"}
+          <Button onClick={connect} disabled={!configured || connecting}>
+            {connecting ? "Waiting for Google…" : "Connect"}
           </Button>
         )}
-      </CardFooter>
-    </Card>
+
+        {connected && (
+          <p className="min-w-0 truncate text-sm text-muted-foreground">
+            {connectedLabel ?? "Connected"}
+            {connectedAt && ` on ${formatDate(connectedAt)}`}
+          </p>
+        )}
+      </div>
+    </IntegrationCard>
   )
 }
 

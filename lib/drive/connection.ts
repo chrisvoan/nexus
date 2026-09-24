@@ -1,5 +1,6 @@
 import "server-only"
 
+import type { DriveTarget } from "@/lib/drive/types"
 import { createClient } from "@/lib/supabase/server"
 
 // The Drive connection belongs to the company, not to the admin who created
@@ -39,6 +40,67 @@ export async function getDriveConnection(): Promise<DriveConnection | null> {
     // Older rows predate the column; they were connected under the constant.
     externalUserId: data.pipedream_external_user_id ?? ORG_EXTERNAL_USER_ID,
   }
+}
+
+/**
+ * Each employee's own Drive lives under an external user id derived from
+ * their user id. It is never read back from the database, so a tampered row
+ * can't borrow an account connected under someone else's id.
+ */
+export function userExternalUserId(userId: string) {
+  return `nexus-user-${userId}`
+}
+
+export type UserDriveStatus = {
+  connection: DriveConnection | null
+  accountName: string | null
+  connectedAt: string | null
+}
+
+/** The employee's own Drive, plus what the Settings page displays. */
+export async function getUserDriveStatus(
+  userId: string
+): Promise<UserDriveStatus> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from("user_drive_connections")
+    .select("pipedream_account_id, account_name, connected_at")
+    .eq("user_id", userId)
+    .maybeSingle()
+
+  // A missing table (migration 008 not applied) reads as "not connected".
+  if (!data) return { connection: null, accountName: null, connectedAt: null }
+  return {
+    connection: {
+      accountId: data.pipedream_account_id,
+      externalUserId: userExternalUserId(userId),
+    },
+    accountName: data.account_name,
+    connectedAt: data.connected_at,
+  }
+}
+
+export type OutputDrive = {
+  connection: DriveConnection
+  target: DriveTarget
+}
+
+/**
+ * Where this employee's mission outputs are saved: their own Drive when they
+ * have connected one, otherwise the company Drive, otherwise nowhere (the
+ * output stays in Nexus).
+ */
+export async function getOutputDrive(
+  userId: string
+): Promise<OutputDrive | null> {
+  const [personal, company] = await Promise.all([
+    getUserDriveStatus(userId),
+    getDriveConnection(),
+  ])
+  if (personal.connection)
+    return { connection: personal.connection, target: "personal" }
+  if (company) return { connection: company, target: "company" }
+  return null
 }
 
 /** Connection plus the "who and when" the Integrations page displays. */
